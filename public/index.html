@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مرصد العملات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lightweight-charts/4.1.3/lightweight-charts.standalone.production.js"></script>
+<style>
+:root{--bg:#0b1017;--pn:#121a25;--ln:#223042;--tx:#e6edf5;--mu:#8497ad;--up:#2fd4a0;--dn:#ff5d6c;--ac:#e8c27a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:400 15px/1.6 "IBM Plex Sans Arabic",system-ui,sans-serif}
+header{padding:14px 16px 0;display:flex;justify-content:space-between;align-items:baseline}
+h1{margin:0;font-size:22px;font-weight:700}
+#st{font-size:12px;color:var(--mu)}
+nav{display:flex;gap:4px;padding:10px 12px;overflow-x:auto;border-bottom:1px solid var(--ln);position:sticky;top:0;background:var(--bg);z-index:5}
+nav button{background:none;border:0;color:var(--mu);font:600 14px inherit;font-family:inherit;padding:8px 14px;border-radius:8px;white-space:nowrap}
+nav button.on{background:var(--pn);color:var(--ac);box-shadow:inset 0 -2px var(--ac)}
+nav button:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+main{padding:14px 12px 40px;max-width:1100px;margin:auto}
+section{display:none}section.on{display:block}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+input,select,.btn{background:var(--pn);color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:8px 10px;font:inherit;min-width:0}
+.btn{background:var(--ac);color:#1a1405;border:0;font-weight:700;cursor:pointer}
+.sm{background:none;color:var(--dn);border:0;cursor:pointer;font:inherit}
+.tw{overflow-x:auto;border:1px solid var(--ln);border-radius:10px}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--ln);white-space:nowrap}
+th{color:var(--mu);font-weight:600;font-size:13px;background:var(--pn)}
+td.n,th.n{text-align:left;direction:ltr;font-variant-numeric:tabular-nums}
+tr:last-child td{border:0}
+.u{color:var(--up)}.d{color:var(--dn)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.c{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:12px}
+.c b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.c span{color:var(--mu);font-size:13px}
+.bar{height:8px;border-radius:4px;background:var(--dn);overflow:hidden;margin:6px 0 16px}
+.bar i{display:block;height:100%;background:var(--up)}
+.ch{height:360px;border:1px solid var(--ln);border-radius:10px;overflow:hidden}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}
+.grid4 .ch{height:240px;position:relative}
+.grid4 .t{position:absolute;top:6px;right:10px;z-index:3;font-weight:700;font-size:13px}
+.note{color:var(--mu);font-size:12px;margin-top:18px}
+.empty{color:var(--mu);padding:16px}
+</style>
+</head>
+<body>
+<header><h1>مرصد العملات</h1><div id="st">جارٍ التحميل…</div></header>
+<nav id="nav">
+<button data-t="mom" class="on">الزخم والسيولة</button>
+<button data-t="rep">تقرير السوق</button>
+<button data-t="chart">الشارت</button>
+<button data-t="al">تنبيهات الأسعار</button>
+</nav>
+<main>
+<section id="mom" class="on">
+<div class="row">
+<input id="q" placeholder="ابحث عن عملة" aria-label="بحث">
+<select id="sort" aria-label="الترتيب">
+<option value="flow">الأعلى تدفق سيولة</option>
+<option value="m5">الأعلى تغيراً (5 دقائق)</option>
+<option value="ch">الأعلى تغيراً (24 ساعة)</option>
+<option value="vol">الأعلى حجماً</option>
+<option value="low">الأكثر هبوطاً (24 ساعة)</option>
+</select>
+</div>
+<div class="tw"><table><thead><tr><th>العملة</th><th class="n">السعر</th><th class="n">24 ساعة</th><th class="n">5 دقائق</th><th class="n">الحجم 24س</th><th class="n">تدفق 5 دقائق</th></tr></thead><tbody id="tb"></tbody></table></div>
+<p class="note">تدفق السيولة هو الزيادة في حجم التداول (بالدولار) خلال آخر 5 دقائق من فتح الصفحة. تظهر القيم بعد دقيقتين تقريباً من التشغيل. الصفحة لا تحفظ سجلاً، فتبدأ الحسابات من جديد في كل زيارة.</p>
+</section>
+
+<section id="rep">
+<div id="rp"></div>
+</section>
+
+<section id="chart">
+<div class="row">
+<select id="mode" aria-label="النمط"><option value="1">شارت واحد</option><option value="4">شارت متعدد (4)</option></select>
+<select id="sym" aria-label="العملة"></select>
+<select id="iv" aria-label="الفاصل"><option>1m</option><option>5m</option><option selected>15m</option><option>1h</option><option>4h</option><option>1d</option></select>
+</div>
+<div id="one" class="ch"></div>
+<div id="multi" class="grid4" hidden></div>
+<p class="note">الشارت الذكي يعرض الشموع مع حجم التداول والمتوسط المتحرك EMA 20 (الخط الذهبي).</p>
+</section>
+
+<section id="al">
+<div class="row">
+<input id="as" placeholder="مثال: BTC" style="width:110px" aria-label="العملة" dir="ltr">
+<select id="ac" aria-label="الشرط"><option value="up">السعر فوق</option><option value="dn">السعر تحت</option></select>
+<input id="ap" type="number" step="any" placeholder="السعر بالدولار" aria-label="السعر" dir="ltr">
+<button class="btn" id="aadd">إضافة تنبيه</button>
+</div>
+<div class="tw"><table><thead><tr><th>العملة</th><th>الشرط</th><th class="n">السعر</th><th class="n">الحالي</th><th>الحالة</th><th></th></tr></thead><tbody id="atb"></tbody></table></div>
+<div class="row" style="margin-top:14px"><button class="btn" id="pushbtn">تفعيل الإشعارات في الخلفية</button><span id="pst" class="note" style="margin:0"></span></div>
+<p class="note">بعد التفعيل يفحص الخادم الأسعار كل دقيقتين ويرسل الإشعار حتى لو كانت الصفحة مغلقة. قد يتأخر التنبيه دقيقتين كحد أقصى.</p>
+</section>
+</main>
+<script>
+(function(){
+var API="https://data-api.binance.vision/api/v3/";
+var $=function(i){return document.getElementById(i)};
+var T={},hist=[],rows=[];
+var BAD=/(UP|DOWN|BULL|BEAR)USDT$/;
+function fmt(p){p=+p;return p>=100?p.toLocaleString("en",{maximumFractionDigits:2}):p>=1?p.toFixed(3):p>=0.01?p.toFixed(5):p.toPrecision(3)}
+function money(v){var a=Math.abs(v);return (v<0?"-":"")+"$"+(a>=1e9?(a/1e9).toFixed(2)+"B":a>=1e6?(a/1e6).toFixed(2)+"M":a>=1e3?(a/1e3).toFixed(1)+"K":a.toFixed(0))}
+function pc(v){return '<span class="'+(v>=0?'u':'d')+'">'+(v>0?"+":"")+v.toFixed(2)+"%</span>"}
+function esc(s){return String(s).replace(/[&<>"]/g,"")}
+function load(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+
+async function tick(){
+ try{
+  var r=await fetch(API+"ticker/24hr");
+  if(!r.ok)throw 0;
+  var a=await r.json();
+  var now=Date.now(),snap={t:now,m:{}};
+  T={};
+  a.forEach(function(x){
+   if(!/USDT$/.test(x.symbol)||BAD.test(x.symbol))return;
+   var qv=+x.quoteVolume;if(qv<1e6)return;
+   T[x.symbol]={s:x.symbol.slice(0,-4),p:+x.lastPrice,ch:+x.priceChangePercent,qv:qv};
+   snap.m[x.symbol]=[+x.lastPrice,qv];
+  });
+  hist.push(snap);
+  while(hist.length>1&&now-hist[0].t>330000)hist.shift();
+  var o=hist[0];
+  Object.keys(T).forEach(function(k){
+   var x=T[k],b=o.m[k];
+   x.ready=hist.length>3&&now-o.t>100000&&b;
+   x.m5=x.ready?(x.p/b[0]-1)*100:null;
+   x.flow=x.ready?x.qv-b[1]:null;
+  });
+  $("st").textContent="آخر تحديث "+new Date().toLocaleTimeString("ar-EG");
+  render();report();checkAlerts();fillSyms();
+ }catch(e){$("st").textContent="تعذر الاتصال بباينانس. سنعيد المحاولة تلقائياً."}
+}
+
+function render(){
+ var q=$("q").value.trim().toUpperCase(),s=$("sort").value;
+ var l=Object.keys(T).map(function(k){return T[k]}).filter(function(x){return !q||x.s.indexOf(q)>-1});
+ var key={flow:"flow",m5:"m5",ch:"ch",vol:"qv",low:"ch"}[s];
+ l.sort(function(a,b){
+  var A=a[key],B=b[key];
+  if(A==null)return 1;if(B==null)return -1;
+  return s==="low"?A-B:B-A;
+ });
+ if(!l.length){$("tb").innerHTML='<tr><td class="empty" colspan="6">لا توجد نتائج</td></tr>';return}
+ $("tb").innerHTML=l.slice(0,60).map(function(x){
+  return "<tr><td><b>"+esc(x.s)+"</b></td><td class='n'>$"+fmt(x.p)+"</td><td class='n'>"+pc(x.ch)+"</td><td class='n'>"+(x.m5==null?"—":pc(x.m5))+"</td><td class='n'>"+money(x.qv)+"</td><td class='n'>"+(x.flow==null?"—":money(x.flow))+"</td></tr>";
+ }).join("");
+}
+
+function report(){
+ var l=Object.keys(T).map(function(k){return T[k]});
+ if(!l.length)return;
+ var up=l.filter(function(x){return x.ch>0}).length,tv=l.reduce(function(a,x){return a+x.qv},0);
+ var g=l.slice().sort(function(a,b){return b.ch-a.ch}).slice(0,5),w=l.slice().sort(function(a,b){return a.ch-b.ch}).slice(0,5),v=l.slice().sort(function(a,b){return b.qv-a.qv}).slice(0,5);
+ var avg=l.reduce(function(a,x){return a+x.ch},0)/l.length;
+ function li(a,f){return "<div class='tw' style='margin-bottom:12px'><table><tbody>"+a.map(function(x){return "<tr><td><b>"+esc(x.s)+"</b></td><td class='n'>$"+fmt(x.p)+"</td><td class='n'>"+f(x)+"</td></tr>"}).join("")+"</tbody></table></div>"}
+ $("rp").innerHTML=
+ "<div class='cards'><div class='c'><span>عملات مرتفعة</span><b class='u'>"+up+"</b></div><div class='c'><span>عملات منخفضة</span><b class='d'>"+(l.length-up)+"</b></div><div class='c'><span>متوسط التغير</span><b>"+pc(avg)+"</b></div><div class='c'><span>حجم التداول 24س</span><b>"+money(tv)+"</b></div></div>"+
+ "<div class='bar'><i style='width:"+(up/l.length*100).toFixed(1)+"%'></i></div>"+
+ "<h3>الأكثر ارتفاعاً</h3>"+li(g,function(x){return pc(x.ch)})+
+ "<h3>الأكثر هبوطاً</h3>"+li(w,function(x){return pc(x.ch)})+
+ "<h3>الأعلى حجماً</h3>"+li(v,function(x){return money(x.qv)})+
+ "<p class='note'>التقرير يغطي أزواج USDT التي يتجاوز حجمها 1 مليون دولار خلال 24 ساعة، ويتحدث كل 30 ثانية. ليس نصيحة مالية.</p>";
+}
+
+/* charts */
+var charts=[];
+function ema(c,n){var k=2/(n+1),e=null;return c.map(function(x){e=e==null?x.close:x.close*k+e*(1-k);return{time:x.time,value:e}})}
+async function draw(el,sym,iv,title){
+ var ch=LightweightCharts.createChart(el,{autoSize:true,layout:{background:{color:"#121a25"},textColor:"#8497ad"},grid:{vertLines:{color:"#1a2635"},horzLines:{color:"#1a2635"}},timeScale:{timeVisible:true,borderColor:"#223042"},rightPriceScale:{borderColor:"#223042"}});
+ charts.push(ch);
+ try{
+  var r=await fetch(API+"klines?symbol="+sym+"&interval="+iv+"&limit=200");
+  var k=(await r.json()).map(function(x){return{time:x[0]/1000,open:+x[1],high:+x[2],low:+x[3],close:+x[4],v:+x[5]}});
+  var cs=ch.addCandlestickSeries({upColor:"#2fd4a0",downColor:"#ff5d6c",borderVisible:false,wickUpColor:"#2fd4a0",wickDownColor:"#ff5d6c"});
+  cs.setData(k);
+  var vs=ch.addHistogramSeries({priceFormat:{type:"volume"},priceScaleId:"v",color:"#34495f"});
+  ch.priceScale("v").applyOptions({scaleMargins:{top:.8,bottom:0}});
+  vs.setData(k.map(function(x){return{time:x.time,value:x.v,color:x.close>=x.open?"#1f6b57":"#7a3340"}}));
+  ch.addLineSeries({color:"#e8c27a",lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(ema(k,20));
+  ch.timeScale().fitContent();
+ }catch(e){el.insertAdjacentHTML("beforeend","<div class='empty'>تعذر تحميل الشموع</div>")}
+}
+function clearCharts(){charts.forEach(function(c){c.remove()});charts=[];$("one").innerHTML="";$("multi").innerHTML=""}
+function drawAll(){
+ if(!window.LightweightCharts)return;
+ clearCharts();
+ var iv=$("iv").value,sym=$("sym").value;
+ if(!sym)return;
+ if($("mode").value==="1"){$("one").hidden=false;$("multi").hidden=true;draw($("one"),sym,iv)}
+ else{
+  $("one").hidden=true;$("multi").hidden=false;
+  var top=Object.keys(T).sort(function(a,b){return T[b].qv-T[a].qv}).slice(0,4);
+  if(top.indexOf(sym)<0)top[0]=sym;
+  top.forEach(function(s){var d=document.createElement("div");d.className="ch";d.innerHTML="<div class='t'>"+s.slice(0,-4)+"/USDT</div>";$("multi").appendChild(d);draw(d,s,iv)});
+ }
+}
+var filled=false;
+function fillSyms(){
+ if(filled)return;filled=true;
+ var ks=Object.keys(T).sort(function(a,b){return T[b].qv-T[a].qv}).slice(0,100);
+ $("sym").innerHTML=ks.map(function(k){return "<option value='"+k+"'>"+T[k].s+"</option>"}).join("");
+ var dl=$("sym");if(ks.indexOf("BTCUSDT")>-1)dl.value="BTCUSDT";
+}
+
+/* alerts */
+var AL=load("marsad_alerts",[]);
+function beep(){try{var c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator();o.connect(c.destination);o.frequency.value=880;o.start();setTimeout(function(){o.stop()},350)}catch(e){}}
+function drawAlerts(){
+ if(!AL.length){$("atb").innerHTML='<tr><td class="empty" colspan="6">لا توجد تنبيهات. أضف أول تنبيه من الأعلى.</td></tr>';return}
+ $("atb").innerHTML=AL.map(function(a,i){
+  var cur=T[a.sym];
+  return "<tr><td><b>"+esc(a.sym.slice(0,-4))+"</b></td><td>"+(a.c==="up"?"فوق":"تحت")+"</td><td class='n'>$"+fmt(a.p)+"</td><td class='n'>"+(cur?"$"+fmt(cur.p):"—")+"</td><td>"+(a.done?"<span class='u'>تم التنبيه</span>":"قيد المراقبة")+"</td><td><button class='sm' data-i='"+i+"'>حذف</button></td></tr>";
+ }).join("");
+}
+function checkAlerts(){
+ var ch=false;
+ AL.forEach(function(a){
+  var x=T[a.sym];if(!x||a.done)return;
+  if((a.c==="up"&&x.p>=a.p)||(a.c==="dn"&&x.p<=a.p)){
+   a.done=true;ch=true;beep();
+   var m=x.s+" وصل إلى $"+fmt(x.p);
+   try{if(!SUB&&"Notification" in window&&Notification.permission==="granted")new Notification("مرصد العملات",{body:m})}catch(e){}
+  }
+ });
+ if(ch){save("marsad_alerts",AL);syncAlerts()}
+ drawAlerts();
+}
+$("aadd").onclick=function(){
+ var s=$("as").value.trim().toUpperCase().replace(/USDT$/,""),p=parseFloat($("ap").value);
+ if(!s||!(p>0))return;
+ if(!T[s+"USDT"]){alert("العملة غير موجودة في أزواج USDT المعروضة");return}
+ AL.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,6),sym:s+"USDT",c:$("ac").value,p:p,done:false});syncAlerts();
+ save("marsad_alerts",AL);
+ try{if("Notification" in window&&Notification.permission==="default")Notification.requestPermission()}catch(e){}
+ $("as").value="";$("ap").value="";drawAlerts();
+};
+$("atb").onclick=function(e){var i=e.target.getAttribute("data-i");if(i!=null){AL.splice(+i,1);save("marsad_alerts",AL);drawAlerts();syncAlerts()}};
+
+/* nav */
+$("nav").onclick=function(e){
+ var t=e.target.getAttribute("data-t");if(!t)return;
+ [].forEach.call(document.querySelectorAll("nav button,section"),function(n){n.classList.remove("on")});
+ e.target.classList.add("on");$(t).classList.add("on");
+ if(t==="chart")drawAll();
+};
+["mode","sym","iv"].forEach(function(i){$(i).onchange=drawAll});
+$("q").oninput=render;$("sort").onchange=render;
+var SUB=null;
+function u8(s){s=s.replace(/-/g,"+").replace(/_/g,"/");s+="=".repeat((4-s.length%4)%4);return Uint8Array.from(atob(s),function(c){return c.charCodeAt(0)})}
+async function syncAlerts(test){
+ if(!SUB)return;
+ try{
+  var r=await fetch("/api/sync",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sub:SUB,alerts:AL,test:!!test})});
+  if(!r.ok)throw 0;
+  AL=(await r.json()).alerts;save("marsad_alerts",AL);drawAlerts();
+  $("pst").textContent="الإشعارات في الخلفية مفعّلة";
+ }catch(e){$("pst").textContent="تعذرت المزامنة مع الخادم"}
+}
+async function initPush(ask){
+ if(!("serviceWorker" in navigator)||!("PushManager" in window)){$("pst").textContent="هذا المتصفح لا يدعم الإشعارات في الخلفية";return}
+ try{
+  var reg=await navigator.serviceWorker.register("sw.js");
+  await navigator.serviceWorker.ready;
+  var sub=await reg.pushManager.getSubscription();
+  if(!sub){
+   if(!ask)return;
+   if(await Notification.requestPermission()!=="granted"){$("pst").textContent="تم رفض إذن الإشعارات";return}
+   var k=(await (await fetch("/api/vapid")).json()).key;
+   sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(k)});
+  }
+  SUB=sub.toJSON();$("pushbtn").textContent="إرسال إشعار تجريبي";
+  await syncAlerts(ask);
+ }catch(e){$("pst").textContent="تعذر التفعيل: "+((e&&e.message)||"خطأ")}
+}
+$("pushbtn").onclick=function(){SUB?syncAlerts(true):initPush(true)};
+initPush(false);
+drawAlerts();tick();setInterval(tick,30000);
+})();
+</script>
+</body>
+</html>
