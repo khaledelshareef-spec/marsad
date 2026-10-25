@@ -62,6 +62,7 @@ const clean = (arr) => (Array.isArray(arr) ? arr : []).slice(0, 50).filter((a) =
 
 async function handle(req, env) {
   const u = new URL(req.url);
+  if (u.pathname === "/api/check") return json(await run(env));
   if (u.pathname === "/api/vapid") return json({ key: (await vapid(env)).pub });
   if (u.pathname === "/api/sync" && req.method === "POST") {
     let b; try { b = await req.json(); } catch (e) { return json({ error: "bad json" }, 400); }
@@ -82,17 +83,22 @@ async function handle(req, env) {
   return new Response("not found", { status: 404 });
 }
 
-// الجدولة: إن فشل مصدر الأسعار لا نرسل أي تنبيه
+// الجدولة: إن فشل مصدر الأسعار لا نرسل أي تنبيه. تعيد الدالة تقريراً للتشخيص.
 async function run(env) {
+  const info = { subs: 0, pending: 0, price: null, symbols: 0, fired: [] };
   const subs = (await env.KV.get("subs", "json")) || {};
   const ids = Object.keys(subs);
-  if (!ids.length) return;
+  info.subs = ids.length;
+  ids.forEach((id) => subs[id].alerts.forEach((a) => { if (!a.done) info.pending++; }));
+  if (!ids.length) return info;
   const prices = {};
   try {
     const r = await fetch(PRICE);
-    if (!r.ok) return;
+    info.price = r.status;
+    if (!r.ok) return info;
     (await r.json()).forEach((x) => { prices[x.symbol] = +x.price; });
-  } catch (e) { return; }
+    info.symbols = Object.keys(prices).length;
+  } catch (e) { info.price = "error: " + e.message; return info; }
   const v = await vapid(env);
   let dirty = false;
   for (const id of ids) {
@@ -101,13 +107,15 @@ async function run(env) {
       const p = prices[a.sym];
       if (a.done || !p) continue;
       if ((a.c === "up" && p >= a.p) || (a.c === "dn" && p <= a.p)) {
-        const r = await push(env, v, s.sub, { title: "مرصد العملات", body: a.sym.slice(0, -4) + " وصل إلى $" + p, tag: akey(a) }).catch(() => null);
-        if (r && (r.status === 404 || r.status === 410)) { delete subs[id]; dirty = true; break; }
-        if (r && r.ok) { a.done = true; dirty = true; }
+        const r = await push(env, v, s.sub, { title: "مرصد العملات", body: a.sym.slice(0, -4) + " وصل إلى $" + p, tag: akey(a) }).catch((e) => ({ status: "error: " + e.message }));
+        info.fired.push({ sym: a.sym, push: r.status });
+        if (r.status === 404 || r.status === 410) { delete subs[id]; dirty = true; break; }
+        if (r.ok) { a.done = true; dirty = true; }
       }
     }
   }
   if (dirty) await env.KV.put("subs", JSON.stringify(subs));
+  return info;
 }
 
 export default {
