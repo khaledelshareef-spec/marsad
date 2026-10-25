@@ -218,6 +218,7 @@ function drawAlerts(){
  }).join("");
 }
 function checkAlerts(){
+ if(SUB){drawAlerts();return}
  var ch=false;
  AL.forEach(function(a){
   var x=T[a.sym];if(!x||a.done)return;
