@@ -6,8 +6,6 @@
 <title>مرصد العملات</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
-<script src="ht
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
 :root{--bg:#0b1017;--pn:#121a25;--ln:#223042;--tx:#e6edf5;--mu:#8497ad;--up:#2fd4a0;--dn:#ff5d6c;--ac:#e8c27a}
 *{box-sizing:border-box}
@@ -188,31 +186,52 @@ function report(){
  "<p class='note'>التقرير يغطي أزواج USDT التي يتجاوز حجمها 1 مليون دولار خلال 24 ساعة، ويتحدث كل ثانيتين. ليس نصيحة مالية.</p>";
 }
 
-/* charts */
-var charts=[],socks=[];
-function ema(c,n){var k=2/(n+1),e=null;return c.map(function(x){e=e==null?x.close:x.close*k+e*(1-k);return{time:x.time,value:e}})}
-async function draw(el,sym,iv,title){
- var ch=LightweightCharts.createChart(el,{autoSize:true,layout:{background:{color:"#121a25"},textColor:"#8497ad"},grid:{vertLines:{color:"#1a2635"},horzLines:{color:"#1a2635"}},timeScale:{timeVisible:true,borderColor:"#223042"},rightPriceScale:{borderColor:"#223042"}});
- charts.push(ch);
- try{
-  var r=await fetch(API+"klines?symbol="+sym+"&interval="+iv+"&limit=200");
-  var k=(await r.json()).map(function(x){return{time:x[0]/1000,open:+x[1],high:+x[2],low:+x[3],close:+x[4],v:+x[5]}});
-  var cs=ch.addCandlestickSeries({upColor:"#2fd4a0",downColor:"#ff5d6c",borderVisible:false,wickUpColor:"#2fd4a0",wickDownColor:"#ff5d6c"});
-  cs.setData(k);
-  var vs=ch.addHistogramSeries({priceFormat:{type:"volume"},priceScaleId:"v",color:"#34495f"});
-  ch.priceScale("v").applyOptions({scaleMargins:{top:.8,bottom:0}});
-  vs.setData(k.map(function(x){return{time:x.time,value:x.v,color:x.close>=x.open?"#1f6b57":"#7a3340"}}));
-  var es=ch.addLineSeries({color:"#e8c27a",lineWidth:2,priceLineVisible:false,lastValueVisible:false}),e=ema(k,20);
-  es.setData(e);
-  var kk=2/21,lt=k[k.length-1].time,ev=e[e.length-1].value,ep=e.length>1?e[e.length-2].value:ev;
-  var ws=new WebSocket("wss://data-stream.binance.vision/ws/"+sym.toLowerCase()+"@kline_"+iv);socks.push(ws);
-  ws.onmessage=function(m){try{var d=JSON.parse(m.data).k,t=d.t/1000,c=+d.c;if(t>lt){ep=ev;lt=t}ev=c*kk+ep*(1-kk);cs.update({time:t,open:+d.o,high:+d.h,low:+d.l,close:c});vs.update({time:t,value:+d.v,color:c>=+d.o?"#1f6b57":"#7a3340"});es.update({time:t,value:ev})}catch(_){}};
-  ch.timeScale().fitContent();
- }catch(e){el.insertAdjacentHTML("beforeend","<div class='empty'>تعذر تحميل الشموع</div>")}
+/* الشارت: رسم مباشر على canvas بدون مكتبات خارجية */
+var socks=[],cdata=[];
+function clearCharts(){socks.forEach(function(w){w.onmessage=null;w.close()});socks=[];cdata=[];$("one").innerHTML="";$("multi").innerHTML=""}
+function emaArr(c,n){var k=2/(n+1),e=null;return c.map(function(x){e=e==null?x.c:x.c*k+e*(1-k);return e})}
+function paint(o){
+ var cv=o.cv,w=cv.clientWidth,h=cv.clientHeight,d=window.devicePixelRatio||1;
+ if(!w||!h)return;
+ cv.width=w*d;cv.height=h*d;
+ var g=cv.getContext("2d");g.scale(d,d);
+ g.fillStyle="#121a25";g.fillRect(0,0,w,h);
+ var n=Math.min(o.k.length,w>500?120:60),k=o.k.slice(-n),ev=o.e.slice(-n);
+ var pw=62,ph=h-10,vh=ph*0.2,cw=(w-pw)/n;
+ var hi=-1e18,lo=1e18,vm=1;
+ k.forEach(function(x){hi=Math.max(hi,x.h);lo=Math.min(lo,x.l);vm=Math.max(vm,x.v)});
+ var rng=(hi-lo)||1,Y=function(p){return 8+(ph-vh-12)*(1-(p-lo)/rng)};
+ g.font="11px sans-serif";g.lineWidth=1;
+ for(var i=0;i<=4;i++){var p=lo+rng*i/4,y=Y(p);g.strokeStyle="#1a2635";g.beginPath();g.moveTo(0,y);g.lineTo(w-pw,y);g.stroke();g.fillStyle="#8497ad";g.fillText(fmt(p),w-pw+4,y+4)}
+ k.forEach(function(x,i){
+  var cx=i*cw+cw/2,up=x.c>=x.o,col=up?"#2fd4a0":"#ff5d6c";
+  g.fillStyle=up?"#1f6b57":"#7a3340";g.fillRect(i*cw+1,ph-x.v/vm*vh,Math.max(cw-2,1),x.v/vm*vh);
+  g.strokeStyle=col;g.fillStyle=col;g.beginPath();g.moveTo(cx,Y(x.h));g.lineTo(cx,Y(x.l));g.stroke();
+  var y1=Y(x.o),y2=Y(x.c);g.fillRect(i*cw+cw*0.15,Math.min(y1,y2),Math.max(cw*0.7,1),Math.max(Math.abs(y1-y2),1));
+ });
+ g.strokeStyle="#e8c27a";g.lineWidth=2;g.beginPath();
+ ev.forEach(function(v,i){var x=i*cw+cw/2,y=Y(v);if(i)g.lineTo(x,y);else g.moveTo(x,y)});g.stroke();
+ var L=k[k.length-1],yl=Y(L.c);g.fillStyle=L.c>=L.o?"#2fd4a0":"#ff5d6c";g.fillRect(w-pw,yl-9,pw,18);
+ g.fillStyle="#0b1017";g.font="bold 11px sans-serif";g.fillText(fmt(L.c),w-pw+4,yl+4);
 }
-function clearCharts(){socks.forEach(function(w){w.onmessage=null;w.close()});socks=[];charts.forEach(function(c){c.remove()});charts=[];$("one").innerHTML="";$("multi").innerHTML=""}
+async function draw(el,sym,iv){
+ var cv=document.createElement("canvas");cv.style.cssText="width:100%;height:100%;display:block";
+ el.style.position="relative";el.appendChild(cv);
+ try{
+  var r=await fetch(API+"klines?symbol="+sym+"&interval="+iv+"&limit=150");
+  if(!r.ok)throw new Error("klines "+r.status);
+  var k=(await r.json()).map(function(x){return{t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]}});
+  var o={cv:cv,k:k,e:emaArr(k,20)};cdata.push(o);paint(o);
+  var ws=new WebSocket("wss://data-stream.binance.vision/ws/"+sym.toLowerCase()+"@kline_"+iv);socks.push(ws);
+  ws.onmessage=function(m){try{
+   var d=JSON.parse(m.data).k,x={t:d.t,o:+d.o,h:+d.h,l:+d.l,c:+d.c,v:+d.v},L=o.k[o.k.length-1];
+   if(x.t>L.t){o.k.push(x);if(o.k.length>400)o.k.shift()}else o.k[o.k.length-1]=x;
+   o.e=emaArr(o.k,20);paint(o);
+  }catch(_){}};
+ }catch(e){el.insertAdjacentHTML("beforeend","<div class='empty' style='position:absolute;top:8px;right:8px'>تعذر تحميل الشموع: "+esc((e&&e.message)||"")+"</div>")}
+}
+window.addEventListener("resize",function(){cdata.forEach(paint)});
 function drawAll(){
- if(!window.LightweightCharts)return;
  clearCharts();
  var iv=$("iv").value,sym=$("sym").value;
  if(!sym)return;
