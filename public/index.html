@@ -109,31 +109,51 @@ function esc(s){return String(s).replace(/[&<>"]/g,"")}
 function load(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 
+var live=false;
+function ingest(s,p,qv,ch){
+ if(!/USDT$/.test(s)||BAD.test(s))return;
+ if(qv<1e6){delete T[s];return}
+ var x=T[s];
+ if(!x)x=T[s]={s:s.slice(0,-4)};
+ x.p=p;x.qv=qv;x.ch=ch;
+}
 async function tick(){
  try{
   var r=await fetch(API+"ticker/24hr");
   if(!r.ok)throw 0;
-  var a=await r.json();
-  var now=Date.now(),snap={t:now,m:{}};
-  T={};
-  a.forEach(function(x){
-   if(!/USDT$/.test(x.symbol)||BAD.test(x.symbol))return;
-   var qv=+x.quoteVolume;if(qv<1e6)return;
-   T[x.symbol]={s:x.symbol.slice(0,-4),p:+x.lastPrice,ch:+x.priceChangePercent,qv:qv};
-   snap.m[x.symbol]=[+x.lastPrice,qv];
-  });
+  (await r.json()).forEach(function(x){ingest(x.symbol,+x.lastPrice,+x.quoteVolume,+x.priceChangePercent)});
+  refresh(true);
+ }catch(e){if(!live)$("st").textContent="تعذر الاتصال بباينانس. سنعيد المحاولة تلقائياً."}
+}
+function connect(){
+ var ws,done=false;
+ function re(){if(done)return;done=true;live=false;setTimeout(connect,3000)}
+ try{ws=new WebSocket("wss://data-stream.binance.vision/ws/!miniTicker@arr")}catch(e){re();return}
+ ws.onopen=function(){live=true};
+ ws.onmessage=function(e){
+  try{JSON.parse(e.data).forEach(function(x){var c=+x.c,o=+x.o;ingest(x.s,c,+x.q,o>0?(c/o-1)*100:0)})}catch(_){}
+ };
+ ws.onclose=re;ws.onerror=re;
+}
+var snapT=0;
+function refresh(force){
+ var now=Date.now();
+ if(force||now-snapT>=5000){
+  snapT=now;
+  var snap={t:now,m:{}};
+  Object.keys(T).forEach(function(k){snap.m[k]=[T[k].p,T[k].qv]});
   hist.push(snap);
   while(hist.length>1&&now-hist[0].t>330000)hist.shift();
-  var o=hist[0];
-  Object.keys(T).forEach(function(k){
-   var x=T[k],b=o.m[k];
-   x.ready=hist.length>3&&now-o.t>100000&&b;
-   x.m5=x.ready?(x.p/b[0]-1)*100:null;
-   x.flow=x.ready?x.qv-b[1]:null;
-  });
-  $("st").textContent="آخر تحديث "+new Date().toLocaleTimeString("ar-EG");
-  render();report();checkAlerts();fillSyms();
- }catch(e){$("st").textContent="تعذر الاتصال بباينانس. سنعيد المحاولة تلقائياً."}
+ }
+ var o=hist[0];
+ Object.keys(T).forEach(function(k){
+  var x=T[k],b=o.m[k];
+  x.ready=hist.length>3&&now-o.t>100000&&b;
+  x.m5=x.ready?(x.p/b[0]-1)*100:null;
+  x.flow=x.ready?x.qv-b[1]:null;
+ });
+ $("st").textContent=(live?"● مباشر ":"تحديث دوري ")+new Date().toLocaleTimeString("ar-EG");
+ render();report();checkAlerts();fillSyms();
 }
 
 function render(){
@@ -164,11 +184,11 @@ function report(){
  "<h3>الأكثر ارتفاعاً</h3>"+li(g,function(x){return pc(x.ch)})+
  "<h3>الأكثر هبوطاً</h3>"+li(w,function(x){return pc(x.ch)})+
  "<h3>الأعلى حجماً</h3>"+li(v,function(x){return money(x.qv)})+
- "<p class='note'>التقرير يغطي أزواج USDT التي يتجاوز حجمها 1 مليون دولار خلال 24 ساعة، ويتحدث كل 30 ثانية. ليس نصيحة مالية.</p>";
+ "<p class='note'>التقرير يغطي أزواج USDT التي يتجاوز حجمها 1 مليون دولار خلال 24 ساعة، ويتحدث كل ثانيتين. ليس نصيحة مالية.</p>";
 }
 
 /* charts */
-var charts=[];
+var charts=[],socks=[];
 function ema(c,n){var k=2/(n+1),e=null;return c.map(function(x){e=e==null?x.close:x.close*k+e*(1-k);return{time:x.time,value:e}})}
 async function draw(el,sym,iv,title){
  var ch=LightweightCharts.createChart(el,{autoSize:true,layout:{background:{color:"#121a25"},textColor:"#8497ad"},grid:{vertLines:{color:"#1a2635"},horzLines:{color:"#1a2635"}},timeScale:{timeVisible:true,borderColor:"#223042"},rightPriceScale:{borderColor:"#223042"}});
@@ -181,11 +201,15 @@ async function draw(el,sym,iv,title){
   var vs=ch.addHistogramSeries({priceFormat:{type:"volume"},priceScaleId:"v",color:"#34495f"});
   ch.priceScale("v").applyOptions({scaleMargins:{top:.8,bottom:0}});
   vs.setData(k.map(function(x){return{time:x.time,value:x.v,color:x.close>=x.open?"#1f6b57":"#7a3340"}}));
-  ch.addLineSeries({color:"#e8c27a",lineWidth:2,priceLineVisible:false,lastValueVisible:false}).setData(ema(k,20));
+  var es=ch.addLineSeries({color:"#e8c27a",lineWidth:2,priceLineVisible:false,lastValueVisible:false}),e=ema(k,20);
+  es.setData(e);
+  var kk=2/21,lt=k[k.length-1].time,ev=e[e.length-1].value,ep=e.length>1?e[e.length-2].value:ev;
+  var ws=new WebSocket("wss://data-stream.binance.vision/ws/"+sym.toLowerCase()+"@kline_"+iv);socks.push(ws);
+  ws.onmessage=function(m){try{var d=JSON.parse(m.data).k,t=d.t/1000,c=+d.c;if(t>lt){ep=ev;lt=t}ev=c*kk+ep*(1-kk);cs.update({time:t,open:+d.o,high:+d.h,low:+d.l,close:c});vs.update({time:t,value:+d.v,color:c>=+d.o?"#1f6b57":"#7a3340"});es.update({time:t,value:ev})}catch(_){}};
   ch.timeScale().fitContent();
  }catch(e){el.insertAdjacentHTML("beforeend","<div class='empty'>تعذر تحميل الشموع</div>")}
 }
-function clearCharts(){charts.forEach(function(c){c.remove()});charts=[];$("one").innerHTML="";$("multi").innerHTML=""}
+function clearCharts(){socks.forEach(function(w){w.onmessage=null;w.close()});socks=[];charts.forEach(function(c){c.remove()});charts=[];$("one").innerHTML="";$("multi").innerHTML=""}
 function drawAll(){
  if(!window.LightweightCharts)return;
  clearCharts();
@@ -208,7 +232,7 @@ function fillSyms(){
 }
 
 /* alerts */
-var AL=load("marsad_alerts",[]);
+var AL=load("marsad_alerts",[]),ad=0;
 function beep(){try{var c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator();o.connect(c.destination);o.frequency.value=880;o.start();setTimeout(function(){o.stop()},350)}catch(e){}}
 function drawAlerts(){
  if(!AL.length){$("atb").innerHTML='<tr><td class="empty" colspan="6">لا توجد تنبيهات. أضف أول تنبيه من الأعلى.</td></tr>';return}
@@ -218,7 +242,6 @@ function drawAlerts(){
  }).join("");
 }
 function checkAlerts(){
- if(SUB){drawAlerts();return}
  var ch=false;
  AL.forEach(function(a){
   var x=T[a.sym];if(!x||a.done)return;
@@ -229,7 +252,7 @@ function checkAlerts(){
   }
  });
  if(ch){save("marsad_alerts",AL);syncAlerts()}
- drawAlerts();
+ if(ch||Date.now()-ad>10000){ad=Date.now();drawAlerts()}
 }
 $("aadd").onclick=function(){
  var s=$("as").value.trim().toUpperCase().replace(/USDT$/,""),p=parseFloat($("ap").value);
@@ -280,7 +303,7 @@ async function initPush(ask){
 }
 $("pushbtn").onclick=function(){SUB?syncAlerts(true):initPush(true)};
 initPush(false);
-drawAlerts();tick();setInterval(tick,30000);
+drawAlerts();tick();connect();setInterval(function(){refresh(false)},2000);setInterval(tick,60000);
 })();
 </script>
 </body>
