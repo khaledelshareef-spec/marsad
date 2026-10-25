@@ -1,0 +1,14 @@
+name = "marsad"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "2537799c416c45fe8b3ab18415c5eb17"
+
+[triggers]
+crons = ["*/2 * * * *"]
